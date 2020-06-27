@@ -1,16 +1,19 @@
-extern crate clap;
-
-use clap::{App, Arg, SubCommand};
+use clap::{App, AppSettings, Arg, SubCommand};
+use kvs::{KvStore, KvsError, Result};
+use std::env::current_dir;
 use std::process::exit;
 
-fn main() {
+fn main() -> Result<()> {
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
+        .setting(AppSettings::DisableHelpSubcommand)
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .setting(AppSettings::VersionlessSubcommands)
         .subcommand(
             SubCommand::with_name("set")
-                .about("Sets the value of a string to a string")
+                .about("Set the value of a string key to a string")
                 .arg(Arg::with_name("KEY").help("A string key").required(true))
                 .arg(
                     Arg::with_name("VALUE")
@@ -20,7 +23,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("get")
-                .about("Gets the string value of a given string key")
+                .about("Get the string value of a given string key")
                 .arg(Arg::with_name("KEY").help("A string key").required(true)),
         )
         .subcommand(
@@ -31,18 +34,37 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        ("set", Some(_matches)) => {
-            eprintln!("unimplemented");
-            exit(1);
+        ("set", Some(matches)) => {
+            let key = matches.value_of("KEY").expect("KEY argument missing");
+            let value = matches.value_of("VALUE").expect("VALUE argument missing");
+
+            let mut store = KvStore::open(current_dir()?)?;
+            store.set(key.to_string(), value.to_string())?;
         }
-        ("get", Some(_matches)) => {
-            eprintln!("unimplemented");
-            exit(1);
+        ("get", Some(matches)) => {
+            let key = matches.value_of("KEY").expect("KEY argument missing");
+
+            let mut store = KvStore::open(current_dir()?)?;
+            if let Some(value) = store.get(key.to_string())? {
+                println!("{}", value);
+            } else {
+                println!("Key not found");
+            }
         }
-        ("rm", Some(_matches)) => {
-            eprintln!("unimplemented");
-            exit(1);
+        ("rm", Some(matches)) => {
+            let key = matches.value_of("KEY").expect("KEY argument missing");
+
+            let mut store = KvStore::open(current_dir()?)?;
+            match store.remove(key.to_string()) {
+                Ok(()) => {}
+                Err(KvsError::KeyNotFound) => {
+                    println!("Key not found");
+                    exit(1);
+                }
+                Err(e) => return Err(e),
+            }
         }
         _ => unreachable!(),
     }
+    Ok(())
 }
